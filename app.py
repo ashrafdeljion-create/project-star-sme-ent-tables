@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("SME-ENT Tables: R10MIL_GROWTH")
 st.write(
     "Upload your SPSS `.sav` data file below. Filters for Type = 1 (Growth)"
-    " and Type = 2 (R10Mil) and calculates NPS and Q10 Experience Means."
+    " and Type = 2 (R10Mil) and calculates NPS, Q10, Q11, and Q12 Means."
 )
 
 # File uploader widget
@@ -64,7 +64,6 @@ if uploaded_file is not None:
           if variable_name not in data.columns:
             return 0.0
 
-          # Exclude code 11 (Don't know) and null/missing values
           valid_data = data[
               (data[variable_name].notnull()) & (data[variable_name] != 11)
           ]
@@ -79,11 +78,23 @@ if uploaded_file is not None:
         fnb_mean, fnb_n = calculate_nps(df_tab, "FNB_NPS1")
         bm_mean, bm_n = calculate_nps(df_tab, "BM_NPS1")
 
-        # 2. Calculate Q10 Rating Means (mapping to labels from your layout)[cite: 4, 5]
+        # 2. Calculate Q10 Means
         q10_2_mean = calculate_rating_mean(df_tab, "Q10_2")
         q10_3_mean = calculate_rating_mean(df_tab, "Q10_3")
         q10_4_mean = calculate_rating_mean(df_tab, "Q10_4")
         q10_5_mean = calculate_rating_mean(df_tab, "Q10_5")
+
+        # 3. Calculate Q11 Product Means[cite: 6, 7]
+        q11_1_mean = calculate_rating_mean(df_tab, "Q11_1_1")
+        q11_2_mean = calculate_rating_mean(df_tab, "Q11_1_2")
+        q11_3_mean = calculate_rating_mean(df_tab, "Q11_1_3")
+        q11_4_mean = calculate_rating_mean(df_tab, "Q11_1_4")
+        q11_5_mean = calculate_rating_mean(df_tab, "Q11_1_5")
+
+        # 4. Calculate Q12 Satisfaction Means[cite: 6, 7]
+        q12_1_mean = calculate_rating_mean(df_tab, "Q12_1")
+        q12_2_mean = calculate_rating_mean(df_tab, "Q12_2")
+        q12_3_mean = calculate_rating_mean(df_tab, "Q12_3")
 
         # Build the output summary table
         summary_data = {
@@ -94,6 +105,23 @@ if uploaded_file is not None:
                 "Q10.2. OVERALL CONTACT CENTRE EXPERIENCE?",
                 "Q10.3. OVERALL ONLINE BANKING EXPERIENCE?",
                 "Q10.4. OVERALL FNB BUSINESS BANKING APP EXPERIENCE?",
+                "Q11.1 Lending products",
+                "Q11.2 Transactional products",
+                "Q11.3 Insurance products",
+                "Q11.4 Investment products",
+                "Q11.5 Forex Products",
+                (
+                    "Q12. Your overall level of satisfaction with the products"
+                    " you received from FNB Business?"
+                ),
+                (
+                    "Q12. Your overall level of satisfaction with FNB Business"
+                    " over the last 3 months?"
+                ),
+                (
+                    "Q12.2 Your overall level of satisfaction with your"
+                    " Relationship Manager over the last 3-6 months?"
+                ),
             ],
             "Total - Mean": [
                 fnb_mean,
@@ -102,6 +130,14 @@ if uploaded_file is not None:
                 q10_3_mean,
                 q10_4_mean,
                 q10_5_mean,
+                q11_1_mean,
+                q11_2_mean,
+                q11_3_mean,
+                q11_4_mean,
+                q11_5_mean,
+                q12_1_mean,
+                q12_2_mean,
+                q12_3_mean,
             ],
             "Total - Valid N": [
                 fnb_n,
@@ -110,7 +146,15 @@ if uploaded_file is not None:
                 "",
                 "",
                 "",
-            ],  # Valid N typically tracked for NPS in this block
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ],
         }
 
         summary_df = pd.DataFrame(summary_data)
