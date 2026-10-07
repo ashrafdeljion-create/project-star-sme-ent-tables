@@ -15,8 +15,8 @@ st.set_page_config(
 st.title("SME-ENT Tables: R10MIL_GROWTH")
 st.write(
     "Upload your SPSS `.sav` data file below. Filters for Type = 1 (Growth)"
-    " & 2 (R10Mil), and breaks down metrics by Total, Months (Tmonth), Type, and"
-    " Segment banners."
+    " & 2 (R10Mil), and formats the Excel output with custom FNB brand colors,"
+    " full cell borders, and auto-adjusted column widths."
 )
 
 # File uploader widget
@@ -84,7 +84,6 @@ if uploaded_file is not None:
         ):
           month_dict = meta.variable_value_labels[tmonth_col]
 
-        # If no labels found in metadata, find unique numeric values in data
         if not month_dict and tmonth_col and tmonth_col in df_tab.columns:
           unique_months = sorted(df_tab[tmonth_col].dropna().unique())
           month_dict = {m: str(m) for m in unique_months}
@@ -115,10 +114,10 @@ if uploaded_file is not None:
 
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
-        # Build columns dynamically: First block is "Total", followed by each month block from Tmonth[cite: 14]
+        # Build columns dynamically
         subsets = {}
 
-        # 1. Total (Overall) Block[cite: 14]
+        # 1. Total (Overall) Block
         subsets[("Total", "Total", "Total", "Mean")] = df_tab
         subsets[("Total", "Total", "Total", "Valid N")] = df_tab
         subsets[("Total", "Type", "Total", "Mean")] = df_tab
@@ -156,7 +155,7 @@ if uploaded_file is not None:
             else pd.DataFrame()
         )
 
-        # 2. Monthly Blocks (iterating through each month code in Tmonth)[cite: 14]
+        # 2. Monthly Blocks
         if tmonth_col and month_dict:
           for m_code, m_label in month_dict.items():
             m_df = df_tab[df_tab[tmonth_col] == m_code]
@@ -280,19 +279,39 @@ if uploaded_file is not None:
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(summary_df, use_container_width=True)
 
-        # Build custom Excel workbook using openpyxl for the hierarchical monthly layout
+        # Build custom Excel workbook using openpyxl with FNB logo theme colors
         wb = Workbook()
         ws = wb.active
         ws.title = "R10MIL_GROWTH"
         ws.views.sheetView[0].showGridLines = True
 
-        # Write Headers (Rows 1 to 4)
-        ws.cell(row=1, column=1, value="")
-        ws.cell(row=2, column=1, value="")
-        ws.cell(row=3, column=1, value="")
-        ws.cell(row=4, column=1, value="")
+        # Logo Color Palette (Teal/Turquoise, Orange, White, Dark/Black)
+        teal_fill = PatternFill(
+            start_color="008A90", end_color="008A90", fill_type="solid"
+        )  # Primary Brand Teal
+        orange_fill = PatternFill(
+            start_color="F47920", end_color="F47920", fill_type="solid"
+        )  # Brand Orange Accent
+        light_teal_fill = PatternFill(
+            start_color="E0F2F1", end_color="E0F2F1", fill_type="solid"
+        )  # Soft Teal Tint
+        white_font = Font(color="FFFFFF", bold=True, size=10)
+        dark_font = Font(color="000000", bold=True, size=10)
 
-        # Determine column spans per month block (each month has 12 columns: Total(2), Type Total(2), Growth(2), R10Mil(2), Ent(2), Plat(2))
+        thin_border = Border(
+            left=Side(style="thin", color="CCCCCC"),
+            right=Side(style="thin", color="CCCCCC"),
+            top=Side(style="thin", color="CCCCCC"),
+            bottom=Side(style="thin", color="CCCCCC"),
+        )
+        data_border = Border(
+            left=Side(style="thin", color="E0E0E0"),
+            right=Side(style="thin", color="E0E0E0"),
+            top=Side(style="thin", color="E0E0E0"),
+            bottom=Side(style="thin", color="E0E0E0"),
+        )
+
+        # Write Headers (Rows 1 to 4)
         col_start = 2
         unique_months = ["Total"] + list(month_dict.values())
 
@@ -300,7 +319,7 @@ if uploaded_file is not None:
           block_start = col_start
           block_end = col_start + 11
 
-          # Row 1: Month Name ("Total", "July", "August", etc.)[cite: 14]
+          # Row 1: Month Name
           ws.cell(row=1, column=block_start, value=m_name)
           if block_start != block_end:
             ws.merge_cells(
@@ -310,7 +329,7 @@ if uploaded_file is not None:
                 end_column=block_end,
             )
 
-          # Row 2: Banners ("Total" for first block, or "Type"/"Seg2" sub-divisions)[cite: 14]
+          # Row 2: Banners
           if m_name == "Total":
             ws.cell(row=2, column=block_start, value="Total")
             ws.merge_cells(
@@ -342,7 +361,7 @@ if uploaded_file is not None:
                 end_column=block_end,
             )
 
-          # Row 3: Sub-Groups[cite: 14]
+          # Row 3: Sub-Groups
           ws.cell(row=3, column=block_start, value="Total")
           ws.merge_cells(
               start_row=3,
@@ -388,37 +407,71 @@ if uploaded_file is not None:
               end_column=block_end,
           )
 
-          # Row 4: Stats (Mean / Valid N)[cite: 14]
+          # Row 4: Stats (Mean / Valid N)
           for c in range(block_start, block_end + 1):
             stat_label = "Mean" if c % 2 == 0 else "Valid N"
             ws.cell(row=4, column=c, value=stat_label)
 
           col_start += 12
 
-        # Insert Data starting at Row 5
+        # Insert Data starting at Row 5 with full borders
         for r_idx, row_dict in enumerate(table_rows, start=5):
-          ws.cell(row=r_idx, column=1, value=row_dict["Metric"])
+          # Metric label column (Column A) with border
+          metric_cell = ws.cell(row=r_idx, column=1, value=row_dict["Metric"])
+          metric_cell.border = data_border
+          metric_cell.alignment = Alignment(horizontal="left", vertical="center")
+
           col_idx = 2
           for col_key in subsets.keys():
-            ws.cell(row=r_idx, column=col_idx, value=row_dict[col_key])
+            val_cell = ws.cell(
+                row=r_idx, column=col_idx, value=row_dict[col_key]
+            )
+            val_cell.border = data_border
+            val_cell.alignment = Alignment(
+                horizontal="center", vertical="center"
+            )
             col_idx += 1
 
-        # Styling headers
-        thin_border = Border(
-            left=Side(style="thin", color="000000"),
-            right=Side(style="thin", color="000000"),
-            top=Side(style="thin", color="000000"),
-            bottom=Side(style="thin", color="000000"),
-        )
-
+        # Apply FNB brand colors and styling to header rows (1 to 4)
         for row in range(1, 5):
           for col in range(1, col_idx):
             cell = ws.cell(row=row, column=col)
             cell.alignment = Alignment(
                 horizontal="center", vertical="center", wrap_text=True
             )
-            cell.font = Font(bold=True, size=10)
             cell.border = thin_border
+            if row == 1:
+              cell.fill = teal_fill
+              cell.font = white_font
+            elif row == 2:
+              cell.fill = orange_fill
+              cell.font = white_font
+            elif row == 3:
+              cell.fill = light_teal_fill
+              cell.font = dark_font
+            else:
+              cell.fill = PatternFill(
+                  start_color="F5F5F5", end_color="F5F5F5", fill_type="solid"
+              )
+              cell.font = dark_font
+
+        # Auto-adjust column widths including Column A to fit all text perfectly
+        for col in ws.columns:
+          max_len = 0
+          col_letter = col[0].column_letter
+          for cell in col:
+            if cell.value is not None:
+              # For column A, account for longer question titles
+              val_str = str(cell.value)
+              if col_letter == "A":
+                max_len = max(max_len, len(val_str))
+              else:
+                max_len = max(max_len, len(val_str))
+          # Set appropriate padding
+          if col_letter == "A":
+            ws.column_dimensions[col_letter].width = min(max(max_len + 4, 30), 65)
+          else:
+            ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
 
         # Save workbook to BytesIO
         output = io.BytesIO()
@@ -427,8 +480,8 @@ if uploaded_file is not None:
 
         # Download button
         st.download_button(
-            label="📥 Download Excel Report",
+            label="📥 Download Styled Excel Report",
             data=excel_data,
-            file_name="R10MIL_GROWTH_Monthly_Report.xlsx",
+            file_name="R10MIL_GROWTH_Styled_Report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
