@@ -15,8 +15,8 @@ st.set_page_config(
 
 st.title("SME-ENT Tables Generator: R10MIL_GROWTH & PUBSC")
 st.write(
-    "Upload your SPSS `.sav` data file below. Generates multi-sheet workbook"
-    " for R10MIL_GROWTH (Type 1 & 2) and PUBSC (Type 3 with SUBREG banner)."
+    "Upload your SPSS `.sav` data file below. Automatically suppresses zero-count"
+    " columns and generates the styled multi-sheet workbook."
 )
 
 # File uploader widget
@@ -120,7 +120,6 @@ if uploaded_file is not None:
             return 0.0
           return round(valid_data[variable_name].mean(), 2)
 
-        # Metrics configuration list shared across sheets
         metrics_config = [
             ("FNB_NPS_SCORE", "FNB_NPS1", True),
             ("BM_NPS_SCORE", "BM_NPS1", True),
@@ -169,87 +168,77 @@ if uploaded_file is not None:
         df_r10_growth = df[df[type_col].isin([1, 2])]
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
-        subsets_r10 = {}
-        # Total overall block
-        subsets_r10[("Total", "Total", "Total", "Mean")] = df_r10_growth
-        subsets_r10[("Total", "Total", "Total", "Valid N")] = df_r10_growth
-        subsets_r10[("Total", "Type", "Total", "Mean")] = df_r10_growth
-        subsets_r10[("Total", "Type", "Total", "Valid N")] = df_r10_growth
-        subsets_r10[("Total", "Type", "Growth", "Mean")] = df_r10_growth[
+        raw_subsets_r10 = {}
+        raw_subsets_r10[("Total", "Total", "Total")] = df_r10_growth
+        raw_subsets_r10[("Total", "Type", "Total")] = df_r10_growth
+        raw_subsets_r10[("Total", "Type", "Growth")] = df_r10_growth[
             df_r10_growth[type_col] == 1
         ]
-        subsets_r10[("Total", "Type", "Growth", "Valid N")] = df_r10_growth[
-            df_r10_growth[type_col] == 1
-        ]
-        subsets_r10[("Total", "Type", "R10Mil", "Mean")] = df_r10_growth[
+        raw_subsets_r10[("Total", "Type", "R10Mil")] = df_r10_growth[
             df_r10_growth[type_col] == 2
         ]
-        subsets_r10[("Total", "Type", "R10Mil", "Valid N")] = df_r10_growth[
-            df_r10_growth[type_col] == 2
-        ]
-        subsets_r10[("Total", "Segment", "ENTERPRISE", "Mean")] = (
+        raw_subsets_r10[("Total", "Segment", "ENTERPRISE")] = (
             df_r10_growth[df_r10_growth[seg2_filter_col] == ent_val]
             if seg2_filter_col in df_r10_growth.columns
             else pd.DataFrame()
         )
-        subsets_r10[("Total", "Segment", "ENTERPRISE", "Valid N")] = (
-            df_r10_growth[df_r10_growth[seg2_filter_col] == ent_val]
-            if seg2_filter_col in df_r10_growth.columns
-            else pd.DataFrame()
-        )
-        subsets_r10[("Total", "Segment", "PLATINUM", "Mean")] = (
-            df_r10_growth[df_r10_growth[seg2_filter_col] == plat_val]
-            if seg2_filter_col in df_r10_growth.columns
-            else pd.DataFrame()
-        )
-        subsets_r10[("Total", "Segment", "PLATINUM", "Valid N")] = (
+        raw_subsets_r10[("Total", "Segment", "PLATINUM")] = (
             df_r10_growth[df_r10_growth[seg2_filter_col] == plat_val]
             if seg2_filter_col in df_r10_growth.columns
             else pd.DataFrame()
         )
 
-        # Monthly blocks for R10MIL_GROWTH
         if tmonth_col and month_dict:
           for m_code, m_label in month_dict.items():
             m_df = df_r10_growth[df_r10_growth[tmonth_col] == m_code]
-            subsets_r10[(m_label, "Total", "Total", "Mean")] = m_df
-            subsets_r10[(m_label, "Total", "Total", "Valid N")] = m_df
-            subsets_r10[(m_label, "Type", "Total", "Mean")] = m_df
-            subsets_r10[(m_label, "Type", "Total", "Valid N")] = m_df
-            subsets_r10[(m_label, "Type", "Growth", "Mean")] = m_df[
+            raw_subsets_r10[(m_label, "Total", "Total")] = m_df
+            raw_subsets_r10[(m_label, "Type", "Total")] = m_df
+            raw_subsets_r10[(m_label, "Type", "Growth")] = m_df[
                 m_df[type_col] == 1
             ]
-            subsets_r10[(m_label, "Type", "Growth", "Valid N")] = m_df[
-                m_df[type_col] == 1
-            ]
-            subsets_r10[(m_label, "Type", "R10Mil", "Mean")] = m_df[
+            raw_subsets_r10[(m_label, "Type", "R10Mil")] = m_df[
                 m_df[type_col] == 2
             ]
-            subsets_r10[(m_label, "Type", "R10Mil", "Valid N")] = m_df[
-                m_df[type_col] == 2
-            ]
-            subsets_r10[(m_label, "Segment", "ENTERPRISE", "Mean")] = (
+            raw_subsets_r10[(m_label, "Segment", "ENTERPRISE")] = (
                 m_df[m_df[seg2_filter_col] == ent_val]
                 if seg2_filter_col in m_df.columns
                 else pd.DataFrame()
             )
-            subsets_r10[(m_label, "Segment", "ENTERPRISE", "Valid N")] = (
-                m_df[m_df[seg2_filter_col] == ent_val]
-                if seg2_filter_col in m_df.columns
-                else pd.DataFrame()
-            )
-            subsets_r10[(m_label, "Segment", "PLATINUM", "Mean")] = (
-                m_df[m_df[seg2_filter_col] == plat_val]
-                if seg2_filter_col in m_df.columns
-                else pd.DataFrame()
-            )
-            subsets_r10[(m_label, "Segment", "PLATINUM", "Valid N")] = (
+            raw_subsets_r10[(m_label, "Segment", "PLATINUM")] = (
                 m_df[m_df[seg2_filter_col] == plat_val]
                 if seg2_filter_col in m_df.columns
                 else pd.DataFrame()
             )
 
-        # Compute rows for R10MIL_GROWTH
+        # Filter out sub-groups where total sample size across NPS metrics is 0 (except Total columns)
+        valid_subsets_r10 = {}
+        for group_key, sub_df in raw_subsets_r10.items():
+          month_lbl, banner_lbl, sub_lbl = group_key
+          # Always keep Total columns
+          if sub_lbl in ["Total", "Growth", "R10Mil", "ENTERPRISE", "PLATINUM"]:
+            if sub_lbl in ["Total", "Growth", "R10Mil"]:
+              total_n = sum(
+                  calculate_nps(sub_df, v)[1]
+                  for _, v, is_nps in metrics_config
+                  if is_nps
+              )
+              if total_n > 0 or sub_lbl == "Total":
+                valid_subsets_r10[group_key] = sub_df
+            else:
+              total_n = sum(
+                  calculate_nps(sub_df, v)[1]
+                  for _, v, is_nps in metrics_config
+                  if is_nps
+              )
+              if total_n > 0:
+                valid_subsets_r10[group_key] = sub_df
+
+        # Build final expanded subsets dictionary with Mean and Valid N splits
+        subsets_r10 = {}
+        for gk, s_df in valid_subsets_r10.items():
+          subsets_r10[(gk[0], gk[1], gk[2], "Mean")] = s_df
+          subsets_r10[(gk[0], gk[1], gk[2], "Valid N")] = s_df
+
         rows_r10 = []
         for label, var_name, is_nps in metrics_config:
           row_data = {"Metric": label}
@@ -272,34 +261,48 @@ if uploaded_file is not None:
         df_pubsc = df[df[type_col] == 3]
         subreg_filter_col = subreg_col if subreg_col else "subreg"
 
-        subsets_pub = {}
-        # Total overall block for PUBSC
-        subsets_pub[("Total", "Total", "Mean")] = df_pubsc
-        subsets_pub[("Total", "Total", "Valid N")] = df_pubsc
+        raw_subsets_pub = {}
+        raw_subsets_pub[("Total", "Total")] = df_pubsc
         if subreg_filter_col in df_pubsc.columns:
           for s_code, s_label in subreg_dict.items():
-            s_df = df_pubsc[df_pubsc[subreg_filter_col] == s_code]
-            subsets_pub[("Total", s_label, "Mean")] = s_df
-            subsets_pub[("Total", s_label, "Valid N")] = s_df
+            raw_subsets_pub[("Total", s_label)] = df_pubsc[
+                df_pubsc[subreg_filter_col] == s_code
+            ]
 
-        # Monthly blocks for PUBSC with SUBREG sub-banners
         if tmonth_col and month_dict:
           for m_code, m_label in month_dict.items():
             m_df = df_pubsc[df_pubsc[tmonth_col] == m_code]
-            subsets_pub[(m_label, "Total", "Mean")] = m_df
-            subsets_pub[(m_label, "Total", "Valid N")] = m_df
+            raw_subsets_pub[(m_label, "Total")] = m_df
             if subreg_filter_col in m_df.columns:
               for s_code, s_label in subreg_dict.items():
-                s_df = m_df[m_df[subreg_filter_col] == s_code]
-                subsets_pub[(m_label, s_label, "Mean")] = s_df
-                subsets_pub[(m_label, s_label, "Valid N")] = s_df
+                raw_subsets_pub[(m_label, s_label)] = m_df[
+                    m_df[subreg_filter_col] == s_code
+                ]
 
-        # Compute rows for PUBSC
+        # Filter out zero-count region columns (where Valid N sum across NPS = 0)
+        valid_subsets_pub = {}
+        for group_key, sub_df in raw_subsets_pub.items():
+          month_lbl, sub_lbl = group_key
+          if sub_lbl == "Total":
+            valid_subsets_pub[group_key] = sub_df
+          else:
+            total_n = sum(
+                calculate_nps(sub_df, v)[1]
+                for _, v, is_nps in metrics_config
+                if is_nps
+            )
+            if total_n > 0:
+              valid_subsets_pub[group_key] = sub_df
+
+        subsets_pub = {}
+        for gk, s_df in valid_subsets_pub.items():
+          subsets_pub[(gk[0], gk[1], "Mean")] = s_df
+          subsets_pub[(gk[0], gk[1], "Valid N")] = s_df
+
         rows_pub = []
         for label, var_name, is_nps in metrics_config:
           row_data = {"Metric": label}
           for col_key, sub_df in subsets_pub.items():
-            # col_key is either (month, 'Total', stat) or (month, region, stat)
             stat = col_key[-1]
             if is_nps:
               mean_val, n_val = calculate_nps(sub_df, var_name)
@@ -313,11 +316,9 @@ if uploaded_file is not None:
           rows_pub.append(row_data)
 
         st.success(
-            "Extraction completed successfully for both R10MIL_GROWTH and"
-            " PUBSC!"
+            "Extraction completed with zero-column suppression successfully!"
         )
 
-        # Preview in Streamlit
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(pd.DataFrame(rows_r10), use_container_width=True)
 
@@ -328,10 +329,8 @@ if uploaded_file is not None:
         # BUILD EXCEL WORKBOOK (Multi-Sheet)
         # ==========================================
         wb = Workbook()
-        # Remove default sheet
         default_sheet = wb.active
 
-        # Logo Color Palette (Teal, Orange, Light Teal, Grays)
         teal_fill = PatternFill(
             start_color="008A90", end_color="008A90", fill_type="solid"
         )
@@ -360,12 +359,17 @@ if uploaded_file is not None:
         ws1 = wb.create_sheet(title="R10MIL_GROWTH")
         ws1.views.sheetView[0].showGridLines = True
 
-        col_start = 2
-        unique_months = ["Total"] + list(month_dict.values())
+        # Group subsets by month to build dynamic headers
+        months_r10 = sorted(
+            list(set([k[0] for k in subsets_r10.keys()])),
+            key=lambda x: (0 if x == "Total" else 1, x),
+        )
 
-        for m_name in unique_months:
+        col_start = 2
+        for m_name in months_r10:
+          m_keys = [k for k in subsets_r10.keys() if k[0] == m_name]
           block_start = col_start
-          block_end = col_start + 11
+          block_end = col_start + len(m_keys) - 1
 
           ws1.cell(row=1, column=block_start, value=m_name)
           if block_start != block_end:
@@ -385,76 +389,56 @@ if uploaded_file is not None:
                 end_column=block_end,
             )
           else:
-            ws1.cell(row=2, column=block_start, value="Total")
-            ws1.merge_cells(
-                start_row=2,
-                start_column=block_start,
-                end_row=2,
-                end_column=block_start + 1,
-            )
-            ws1.cell(row=2, column=block_start + 2, value="Type")
-            ws1.merge_cells(
-                start_row=2,
-                start_column=block_start + 2,
-                end_row=2,
-                end_column=block_start + 7,
-            )
-            ws1.cell(row=2, column=block_start + 8, value="Seg2")
-            ws1.merge_cells(
-                start_row=2,
-                start_column=block_start + 8,
-                end_row=2,
-                end_column=block_end,
-            )
+            # Subdivide banners dynamically based on available sub-groups
+            sub_cols_in_block = [k[2] for k in m_keys if k[3] == "Mean"]
+            curr_bc = block_start
+            # Group by banner category
+            type_items = [s for s in sub_cols_in_block if s in ["Total", "Growth", "R10Mil"]]
+            seg_items = [s for s in sub_cols_in_block if s in ["ENTERPRISE", "PLATINUM"]]
 
-          ws1.cell(row=3, column=block_start, value="Total")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start,
-              end_row=3,
-              end_column=block_start + 1,
-          )
-          ws1.cell(row=3, column=block_start + 2, value="Total")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start + 2,
-              end_row=3,
-              end_column=block_start + 3,
-          )
-          ws1.cell(row=3, column=block_start + 4, value="Growth")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start + 4,
-              end_row=3,
-              end_column=block_start + 5,
-          )
-          ws1.cell(row=3, column=block_start + 6, value="R10Mil")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start + 6,
-              end_row=3,
-              end_column=block_start + 7,
-          )
-          ws1.cell(row=3, column=block_start + 8, value="ENTERPRISE")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start + 8,
-              end_row=3,
-              end_column=block_start + 9,
-          )
-          ws1.cell(row=3, column=block_start + 10, value="PLATINUM")
-          ws1.merge_cells(
-              start_row=3,
-              start_column=block_start + 10,
-              end_row=3,
-              end_column=block_end,
-          )
+            if type_items:
+              t_start = curr_bc
+              t_end = curr_bc + (len(type_items) * 2) - 1
+              ws1.cell(row=2, column=t_start, value="Type")
+              if t_start != t_end:
+                ws1.merge_cells(
+                    start_row=2,
+                    start_column=t_start,
+                    end_row=2,
+                    end_column=t_end,
+                )
+              curr_bc = t_end + 1
 
-          for c in range(block_start, block_end + 1):
-            ws1.cell(
-                row=4, column=c, value="Mean" if c % 2 == 0 else "Valid N"
-            )
-          col_start += 12
+            if seg_items:
+              s_start = curr_bc
+              s_end = curr_bc + (len(seg_items) * 2) - 1
+              ws1.cell(row=2, column=s_start, value="Seg2")
+              if s_start != s_end:
+                ws1.merge_cells(
+                    start_row=2,
+                    start_column=s_start,
+                    end_row=2,
+                    end_column=s_end,
+                )
+
+          # Row 3 & 4 sub-groups
+          curr_sub_c = block_start
+          seen_subs = []
+          for k in m_keys:
+            if k[3] == "Mean":
+              sub_name = k[2]
+              ws1.cell(row=3, column=curr_sub_c, value=sub_name)
+              ws1.merge_cells(
+                  start_row=3,
+                  start_column=curr_sub_c,
+                  end_row=3,
+                  end_column=curr_sub_c + 1,
+              )
+              ws1.cell(row=4, column=curr_sub_c, value="Mean")
+              ws1.cell(row=4, column=curr_sub_c + 1, value="Valid N")
+              curr_sub_c += 2
+
+          col_start = block_end + 1
 
         max_col_r10 = col_start - 1
         for r_idx, row_dict in enumerate(rows_r10, start=5):
@@ -511,16 +495,17 @@ if uploaded_file is not None:
         ws2 = wb.create_sheet(title="PUBSC")
         ws2.views.sheetView[0].showGridLines = True
 
-        # Each month block in PUBSC has 2 columns for Total (Mean/Valid N) + 2 columns per region in subreg_dict
-        regions_count = len(subreg_dict) if subreg_dict else 0
-        cols_per_month = 2 + (regions_count * 2)
+        months_pub = sorted(
+            list(set([k[0] for k in subsets_pub.keys()])),
+            key=lambda x: (0 if x == "Total" else 1, x),
+        )
 
         col_start_p = 2
-        for m_name in unique_months:
+        for m_name in months_pub:
+          m_keys = [k for k in subsets_pub.keys() if k[0] == m_name]
           block_start = col_start_p
-          block_end = col_start_p + cols_per_month - 1
+          block_end = col_start_p + len(m_keys) - 1
 
-          # Row 1: Month Name
           ws2.cell(row=1, column=block_start, value=m_name)
           if block_start != block_end:
             ws2.merge_cells(
@@ -530,7 +515,6 @@ if uploaded_file is not None:
                 end_column=block_end,
             )
 
-          # Row 2: Banner ("SUBREG")[cite: 18]
           ws2.cell(row=2, column=block_start, value="SUBREG")
           ws2.merge_cells(
               start_row=2,
@@ -539,34 +523,22 @@ if uploaded_file is not None:
               end_column=block_end,
           )
 
-          # Row 3: Sub-Groups (Total + Each Region)[cite: 18]
-          ws2.cell(row=3, column=block_start, value="Total")
-          ws2.merge_cells(
-              start_row=3,
-              start_column=block_start,
-              end_row=3,
-              end_column=block_start + 1,
-          )
-
-          curr_c = block_start + 2
-          if subreg_dict:
-            for s_code, s_label in subreg_dict.items():
-              ws2.cell(row=3, column=curr_c, value=s_label)
+          curr_sub_c = block_start
+          for k in m_keys:
+            if k[2] == "Mean":
+              region_name = k[1]
+              ws2.cell(row=3, column=curr_sub_c, value=region_name)
               ws2.merge_cells(
                   start_row=3,
-                  start_column=curr_c,
+                  start_column=curr_sub_c,
                   end_row=3,
-                  end_column=curr_c + 1,
+                  end_column=curr_sub_c + 1,
               )
-              curr_c += 2
+              ws2.cell(row=4, column=curr_sub_c, value="Mean")
+              ws2.cell(row=4, column=curr_sub_c + 1, value="Valid N")
+              curr_sub_c += 2
 
-          # Row 4: Stats (Mean / Valid N)
-          for c in range(block_start, block_end + 1):
-            ws2.cell(
-                row=4, column=c, value="Mean" if c % 2 == 0 else "Valid N"
-            )
-
-          col_start_p += cols_per_month
+          col_start_p = block_end + 1
 
         max_col_pub = col_start_p - 1
         for r_idx, row_dict in enumerate(rows_pub, start=5):
@@ -619,16 +591,13 @@ if uploaded_file is not None:
               else max(max_len + 3, 12)
           )
 
-        # Remove default blank sheet if present
         if default_sheet in wb.worksheets:
           wb.remove(default_sheet)
 
-        # Save workbook to BytesIO
         output = io.BytesIO()
         wb.save(output)
         excel_data = output.getvalue()
 
-        # Download button
         st.download_button(
             label="📥 Download Complete Multi-Sheet Excel Report",
             data=excel_data,
