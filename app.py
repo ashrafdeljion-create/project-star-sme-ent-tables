@@ -15,8 +15,9 @@ st.set_page_config(
 
 st.title("SME-ENT Tables Generator: R10MIL_GROWTH & PUBSC")
 st.write(
-    "Upload your SPSS `.sav` data file below. Automatically suppresses zero-count"
-    " columns and generates the styled multi-sheet workbook."
+    "Upload your SPSS `.sav` data file below. Automatically sorts months"
+    " chronologically, suppresses zero-count columns, and generates the styled"
+    " multi-sheet workbook."
 )
 
 # File uploader widget
@@ -82,6 +83,53 @@ if uploaded_file is not None:
         if not month_dict and tmonth_col and tmonth_col in df.columns:
           unique_months = sorted(df[tmonth_col].dropna().unique())
           month_dict = {m: str(m) for m in unique_months}
+
+        # Chronological month sorting mapping
+        month_order_map = {
+            "january": 1,
+            "jan": 1,
+            "february": 2,
+            "feb": 2,
+            "march": 3,
+            "mar": 3,
+            "april": 4,
+            "apr": 4,
+            "may": 5,
+            "june": 6,
+            "jun": 6,
+            "july": 7,
+            "jul": 7,
+            "august": 8,
+            "aug": 8,
+            "september": 9,
+            "sep": 9,
+            "sept": 9,
+            "october": 10,
+            "oct": 10,
+            "november": 11,
+            "nov": 11,
+            "december": 12,
+            "dec": 12,
+        }
+
+        def get_month_sort_key(item):
+          # item can be code (if sorting dict) or label string
+          label = (
+              str(item[1]) if isinstance(item, tuple) else str(item)
+          ).strip()
+          lower_label = label.lower()
+          for m_name, m_idx in month_order_map.items():
+            if m_name in lower_label:
+              return (1, m_idx)
+          # Fallback for numeric codes or unrecognized strings
+          try:
+            return (0, int(label))
+          except ValueError:
+            return (2, label)
+
+        # Sort month_dict chronologically by its label values
+        sorted_month_items = sorted(month_dict.items(), key=get_month_sort_key)
+        sorted_month_dict = {k: v for k, v in sorted_month_items}
 
         # Helper: Determine SUBREG values and labels for PUBSC
         subreg_dict = {}
@@ -188,8 +236,8 @@ if uploaded_file is not None:
             else pd.DataFrame()
         )
 
-        if tmonth_col and month_dict:
-          for m_code, m_label in month_dict.items():
+        if tmonth_col and sorted_month_dict:
+          for m_code, m_label in sorted_month_dict.items():
             m_df = df_r10_growth[df_r10_growth[tmonth_col] == m_code]
             raw_subsets_r10[(m_label, "Total", "Total")] = m_df
             raw_subsets_r10[(m_label, "Type", "Total")] = m_df
@@ -210,11 +258,9 @@ if uploaded_file is not None:
                 else pd.DataFrame()
             )
 
-        # Filter out sub-groups where total sample size across NPS metrics is 0 (except Total columns)
         valid_subsets_r10 = {}
         for group_key, sub_df in raw_subsets_r10.items():
           month_lbl, banner_lbl, sub_lbl = group_key
-          # Always keep Total columns
           if sub_lbl in ["Total", "Growth", "R10Mil", "ENTERPRISE", "PLATINUM"]:
             if sub_lbl in ["Total", "Growth", "R10Mil"]:
               total_n = sum(
@@ -233,7 +279,6 @@ if uploaded_file is not None:
               if total_n > 0:
                 valid_subsets_r10[group_key] = sub_df
 
-        # Build final expanded subsets dictionary with Mean and Valid N splits
         subsets_r10 = {}
         for gk, s_df in valid_subsets_r10.items():
           subsets_r10[(gk[0], gk[1], gk[2], "Mean")] = s_df
@@ -269,8 +314,8 @@ if uploaded_file is not None:
                 df_pubsc[subreg_filter_col] == s_code
             ]
 
-        if tmonth_col and month_dict:
-          for m_code, m_label in month_dict.items():
+        if tmonth_col and sorted_month_dict:
+          for m_code, m_label in sorted_month_dict.items():
             m_df = df_pubsc[df_pubsc[tmonth_col] == m_code]
             raw_subsets_pub[(m_label, "Total")] = m_df
             if subreg_filter_col in m_df.columns:
@@ -279,7 +324,6 @@ if uploaded_file is not None:
                     m_df[subreg_filter_col] == s_code
                 ]
 
-        # Filter out zero-count region columns (where Valid N sum across NPS = 0)
         valid_subsets_pub = {}
         for group_key, sub_df in raw_subsets_pub.items():
           month_lbl, sub_lbl = group_key
@@ -316,7 +360,8 @@ if uploaded_file is not None:
           rows_pub.append(row_data)
 
         st.success(
-            "Extraction completed with zero-column suppression successfully!"
+            "Extraction completed with chronological month sorting"
+            " successfully!"
         )
 
         st.subheader("Results Preview: R10MIL_GROWTH")
@@ -355,19 +400,31 @@ if uploaded_file is not None:
             bottom=Side(style="thin", color="E0E0E0"),
         )
 
+        # Helper to sort months chronologically for header rendering
+        def sort_months_list(m_list):
+          # Ensure "Total" is always first, followed by chronologically sorted months
+          other_months = [m for m in m_list if m != "Total"]
+          other_months.sort(
+              key=lambda x: get_month_sort_key((0, x))[1]
+              if isinstance(get_month_sort_key((0, x)), tuple)
+              else 0
+          )
+          return ["Total"] + [
+              m for m in other_months if m in sorted_month_dict.values()
+          ]
+
         # --- SHEET 1: R10MIL_GROWTH ---
         ws1 = wb.create_sheet(title="R10MIL_GROWTH")
         ws1.views.sheetView[0].showGridLines = True
 
-        # Group subsets by month to build dynamic headers
-        months_r10 = sorted(
-            list(set([k[0] for k in subsets_r10.keys()])),
-            key=lambda x: (0 if x == "Total" else 1, x),
-        )
+        raw_months_r10 = list(set([k[0] for k in subsets_r10.keys()]))
+        months_r10 = sort_months_list(raw_months_r10)
 
         col_start = 2
         for m_name in months_r10:
           m_keys = [k for k in subsets_r10.keys() if k[0] == m_name]
+          if not m_keys:
+            continue
           block_start = col_start
           block_end = col_start + len(m_keys) - 1
 
@@ -389,12 +446,16 @@ if uploaded_file is not None:
                 end_column=block_end,
             )
           else:
-            # Subdivide banners dynamically based on available sub-groups
             sub_cols_in_block = [k[2] for k in m_keys if k[3] == "Mean"]
             curr_bc = block_start
-            # Group by banner category
-            type_items = [s for s in sub_cols_in_block if s in ["Total", "Growth", "R10Mil"]]
-            seg_items = [s for s in sub_cols_in_block if s in ["ENTERPRISE", "PLATINUM"]]
+            type_items = [
+                s
+                for s in sub_cols_in_block
+                if s in ["Total", "Growth", "R10Mil"]
+            ]
+            seg_items = [
+                s for s in sub_cols_in_block if s in ["ENTERPRISE", "PLATINUM"]
+            ]
 
             if type_items:
               t_start = curr_bc
@@ -421,9 +482,7 @@ if uploaded_file is not None:
                     end_column=s_end,
                 )
 
-          # Row 3 & 4 sub-groups
           curr_sub_c = block_start
-          seen_subs = []
           for k in m_keys:
             if k[3] == "Mean":
               sub_name = k[2]
@@ -446,7 +505,13 @@ if uploaded_file is not None:
           metric_cell.border = data_border
           metric_cell.alignment = Alignment(horizontal="left", vertical="center")
           col_idx = 2
-          for col_key in subsets_r10.keys():
+          # Rebuild ordered keys matching rendered headers
+          ordered_r10_keys = []
+          for m_n in months_r10:
+            ordered_r10_keys.extend(
+                [k for k in subsets_r10.keys() if k[0] == m_n]
+            )
+          for col_key in ordered_r10_keys:
             val_cell = ws1.cell(
                 row=r_idx, column=col_idx, value=row_dict[col_key]
             )
@@ -495,14 +560,14 @@ if uploaded_file is not None:
         ws2 = wb.create_sheet(title="PUBSC")
         ws2.views.sheetView[0].showGridLines = True
 
-        months_pub = sorted(
-            list(set([k[0] for k in subsets_pub.keys()])),
-            key=lambda x: (0 if x == "Total" else 1, x),
-        )
+        raw_months_pub = list(set([k[0] for k in subsets_pub.keys()]))
+        months_pub = sort_months_list(raw_months_pub)
 
         col_start_p = 2
         for m_name in months_pub:
           m_keys = [k for k in subsets_pub.keys() if k[0] == m_name]
+          if not m_keys:
+            continue
           block_start = col_start_p
           block_end = col_start_p + len(m_keys) - 1
 
@@ -546,7 +611,12 @@ if uploaded_file is not None:
           metric_cell.border = data_border
           metric_cell.alignment = Alignment(horizontal="left", vertical="center")
           col_idx = 2
-          for col_key in subsets_pub.keys():
+          ordered_pub_keys = []
+          for m_n in months_pub:
+            ordered_pub_keys.extend(
+                [k for k in subsets_pub.keys() if k[0] == m_n]
+            )
+          for col_key in ordered_pub_keys:
             val_cell = ws2.cell(
                 row=r_idx, column=col_idx, value=row_dict[col_key]
             )
