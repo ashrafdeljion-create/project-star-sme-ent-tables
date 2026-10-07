@@ -13,8 +13,8 @@ st.set_page_config(
 st.title("SME-ENT Tables: R10MIL_GROWTH")
 st.write(
     "Upload your SPSS `.sav` data file below. Filters for Type = 1 (Growth)"
-    " & 2 (R10Mil), and calculates metrics across Total, Type, and Segment"
-    " banners."
+    " & 2 (R10Mil), and calculates metrics across hierarchical Total, Type, and"
+    " Segment banners."
 )
 
 # File uploader widget
@@ -34,7 +34,6 @@ if uploaded_file is not None:
       df, meta = pyreadstat.read_sav("temp.sav")
 
       # Normalize column names for case-insensitive matching if needed
-      # Find exact column names regardless of casing
       col_map = {c.lower(): c for c in df.columns}
 
       type_col = col_map.get("type", None)
@@ -102,20 +101,41 @@ if uploaded_file is not None:
         # Define sub-samples for the columns safely using detected column names
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
+        # Column tuple structure: (Top Banner / Total, Sub-banner / Group, Stat)
+        # Matching layout: Total banner covers everything, Type covers Total/Growth/R10Mil, Segment covers ENTERPRISE/PLATINUM[cite: 1, 10]
         subsets = {
-            ("Total", "Total"): df_tab,
-            ("Type", "Growth"): (
+            ("Total", "Total", "Mean"): df_tab,
+            ("Total", "Total", "Valid N"): df_tab,
+            ("Type", "Total", "Mean"): df_tab,
+            ("Type", "Total", "Valid N"): df_tab,
+            ("Type", "Growth", "Mean"): (
                 df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
             ),
-            ("Type", "R10Mil"): (
+            ("Type", "Growth", "Valid N"): (
+                df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
+            ),
+            ("Type", "R10Mil", "Mean"): (
                 df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
             ),
-            ("Segment", "ENTERPRISE"): (
+            ("Type", "R10Mil", "Valid N"): (
+                df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
+            ),
+            ("Segment", "ENTERPRISE", "Mean"): (
                 df_tab[df_tab[seg2_filter_col] == ent_val]
                 if seg2_filter_col in df_tab.columns
                 else pd.DataFrame()
             ),
-            ("Segment", "PLATINUM"): (
+            ("Segment", "ENTERPRISE", "Valid N"): (
+                df_tab[df_tab[seg2_filter_col] == ent_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            ),
+            ("Segment", "PLATINUM", "Mean"): (
+                df_tab[df_tab[seg2_filter_col] == plat_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            ),
+            ("Segment", "PLATINUM", "Valid N"): (
                 df_tab[df_tab[seg2_filter_col] == plat_val]
                 if seg2_filter_col in df_tab.columns
                 else pd.DataFrame()
@@ -170,46 +190,41 @@ if uploaded_file is not None:
         for label, var_name, is_nps in metrics_config:
           row_data = {"Metric": label}
           for col_key, sub_df in subsets.items():
-            banner, sub_col = col_key
+            banner, sub_col, stat = col_key
             if is_nps:
               mean_val, n_val = calculate_nps(sub_df, var_name)
-              row_data[(banner, sub_col, "Mean")] = mean_val
-              row_data[(banner, sub_col, "Valid N")] = n_val
+              if stat == "Mean":
+                row_data[col_key] = mean_val
+              else:
+                row_data[col_key] = n_val
             else:
-              mean_val = calculate_rating_mean(sub_df, var_name)
-              row_data[(banner, sub_col, "Mean")] = mean_val
-              row_data[(banner, sub_col, "Valid N")] = (
-                  ""  # Blank for rating scales
-              )
+              # For rating scales, mean is calculated; Valid N is left blank ("") like the screenshot layout[cite: 1, 8]
+              if stat == "Mean":
+                row_data[col_key] = calculate_rating_mean(sub_df, var_name)
+              else:
+                row_data[col_key] = ""
           table_rows.append(row_data)
 
-        # Construct MultiIndex columns dataframe
+        # Construct MultiIndex columns dataframe matching the exact hierarchy
         multi_cols = pd.MultiIndex.from_tuples(
-            [("Metric", "", "")]
-            + [
-                (banner, sub_col, stat)
-                for banner, sub_col in subsets.keys()
-                for stat in ["Mean", "Valid N"]
-            ],
+            [("Metric", "", "")] + list(subsets.keys()),
             names=["Banner", "Sub-Group", "Stat"],
         )
 
-        # Flatten rows into a standard dataframe structure with MultiIndex columns
         formatted_rows = []
         for r in table_rows:
           flat_row = [r["Metric"]]
-          for banner, sub_col in subsets.keys():
-            flat_row.append(r[(banner, sub_col, "Mean")])
-            flat_row.append(r[(banner, sub_col, "Valid N")])
+          for col_key in subsets.keys():
+            flat_row.append(r[col_key])
           formatted_rows.append(flat_row)
 
         summary_df = pd.DataFrame(formatted_rows, columns=multi_cols)
 
         st.success(
-            "Extraction and banner cross-tabulation completed successfully!"
+            "Extraction and hierarchical layout completed successfully!"
         )
 
-        # Display dataframe in app
+        # Display dataframe in app with multi-index columns nicely formatted
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(summary_df, use_container_width=True)
 
