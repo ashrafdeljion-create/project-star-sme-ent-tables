@@ -2,6 +2,8 @@ import io
 import pandas as pd
 import pyreadstat
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 # Page configuration
 st.set_page_config(
@@ -13,8 +15,8 @@ st.set_page_config(
 st.title("SME-ENT Tables: R10MIL_GROWTH")
 st.write(
     "Upload your SPSS `.sav` data file below. Filters for Type = 1 (Growth)"
-    " & 2 (R10Mil), and calculates metrics across hierarchical Total, Type, and"
-    " Segment banners."
+    " & 2 (R10Mil), and formats the Excel output with the exact 4-tier column"
+    " hierarchy."
 )
 
 # File uploader widget
@@ -98,7 +100,7 @@ if uploaded_file is not None:
           return round(valid_data[variable_name].mean(), 2)
 
 
-        # Define sub-samples for the columns safely using detected column names
+        # Define sub-samples for columns safely using detected column names
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
         subsets = {
@@ -202,7 +204,7 @@ if uploaded_file is not None:
                 row_data[col_key] = ""
           table_rows.append(row_data)
 
-        # Construct MultiIndex columns dataframe for Streamlit
+        # Construct MultiIndex columns dataframe for Streamlit preview
         multi_cols = pd.MultiIndex.from_tuples(
             [("Metric", "", "")] + list(subsets.keys()),
             names=["Banner", "Sub-Group", "Stat"],
@@ -225,18 +227,77 @@ if uploaded_file is not None:
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(summary_df, use_container_width=True)
 
-        # Generate Excel file for download (flattening columns to avoid openpyxl multi-index limitation)
-        output = io.BytesIO()
-        excel_export_df = summary_df.copy()
-        excel_export_df.columns = [
-            f"{col[0]} | {col[1]} | {col[2]}" if col[0] != "Metric" else "Metric"
-            for col in excel_export_df.columns
-        ]
+        # Build custom Excel workbook using openpyxl to match the exact 4-tier structure
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "R10MIL_GROWTH"
 
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-          excel_export_df.to_excel(
-              writer, sheet_name="R10MIL_GROWTH", index=False, header=True
-          )
+        # Ensure grid lines are visible
+        ws.views.sheetView[0].showGridLines = True
+
+        # Row 1: Top Banner ("Total" spanning from col B to M)
+        ws.cell(row=1, column=1, value="")
+        ws.cell(row=1, column=2, value="Total")
+        ws.merge_cells("B1:M1")
+
+        # Row 2: Sub-Banners ("Type" for cols B-G, "Seg2" for cols H-M)[cite: 13]
+        ws.cell(row=2, column=2, value="Type")
+        ws.merge_cells("B2:G2")
+        ws.cell(row=2, column=8, value="Seg2")
+        ws.merge_cells("H2:M2")
+
+        # Row 3: Sub-Groups (Total, Growth, R10Mil, ENTERPRISE, PLATINUM)[cite: 13]
+        sub_group_headers = [
+            ("Total", 2, 3),
+            ("Growth", 4, 5),
+            ("R10Mil", 6, 7),
+            ("ENTERPRISE", 8, 9),
+            ("PLATINUM", 10, 11),
+        ]
+        for name, start_c, end_c in sub_group_headers:
+          ws.cell(row=3, column=start_c, value=name)
+          if start_c != end_c:
+            ws.merge_cells(
+                start_row=3, start_column=start_c, end_row=3, end_column=end_c
+            )
+
+        # Row 4: Stats (Mean / Valid N)[cite: 13]
+        ws.cell(row=4, column=1, value="")
+        for c in range(2, 14):
+          stat_label = "Mean" if c % 2 == 0 else "Valid N"
+          ws.cell(row=4, column=c, value=stat_label)
+
+        # Insert Data starting at Row 5
+        for r_idx, row_dict in enumerate(table_rows, start=5):
+          ws.cell(row=r_idx, column=1, value=row_dict["Metric"])
+          col_idx = 2
+          for col_key in subsets.keys():
+            ws.cell(row=r_idx, column=col_idx, value=row_dict[col_key])
+            col_idx += 1
+
+        # Styling headers (center alignment, borders, fonts)
+        thin_border = Border(
+            left=Side(style="thin", color="000000"),
+            right=Side(style="thin", color="000000"),
+            top=Side(style="thin", color="000000"),
+            bottom=Side(style="thin", color="000000"),
+        )
+        header_fill = PatternFill(
+            start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+        )
+
+        for row in range(1, 5):
+          for col in range(1, 14):
+            cell = ws.cell(row=row, column=col)
+            cell.alignment = Alignment(
+                horizontal="center", vertical="center", wrap_text=True
+            )
+            cell.font = Font(bold=True, size=10)
+            cell.border = thin_border
+
+        # Save workbook to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
         excel_data = output.getvalue()
 
         # Download button
