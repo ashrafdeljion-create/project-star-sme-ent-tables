@@ -4,6 +4,7 @@ import pyreadstat
 import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 # Page configuration
 st.set_page_config(
@@ -288,13 +289,13 @@ if uploaded_file is not None:
         # Logo Color Palette (Teal/Turquoise, Orange, White, Dark/Black)
         teal_fill = PatternFill(
             start_color="008A90", end_color="008A90", fill_type="solid"
-        )  # Primary Brand Teal
+        )
         orange_fill = PatternFill(
             start_color="F47920", end_color="F47920", fill_type="solid"
-        )  # Brand Orange Accent
+        )
         light_teal_fill = PatternFill(
             start_color="E0F2F1", end_color="E0F2F1", fill_type="solid"
-        )  # Soft Teal Tint
+        )
         white_font = Font(color="FFFFFF", bold=True, size=10)
         dark_font = Font(color="000000", bold=True, size=10)
 
@@ -415,8 +416,8 @@ if uploaded_file is not None:
           col_start += 12
 
         # Insert Data starting at Row 5 with full borders
+        max_col_idx = col_start - 1
         for r_idx, row_dict in enumerate(table_rows, start=5):
-          # Metric label column (Column A) with border
           metric_cell = ws.cell(row=r_idx, column=1, value=row_dict["Metric"])
           metric_cell.border = data_border
           metric_cell.alignment = Alignment(horizontal="left", vertical="center")
@@ -434,7 +435,7 @@ if uploaded_file is not None:
 
         # Apply FNB brand colors and styling to header rows (1 to 4)
         for row in range(1, 5):
-          for col in range(1, col_idx):
+          for col in range(1, max_col_idx + 1):
             cell = ws.cell(row=row, column=col)
             cell.alignment = Alignment(
                 horizontal="center", vertical="center", wrap_text=True
@@ -455,19 +456,15 @@ if uploaded_file is not None:
               )
               cell.font = dark_font
 
-        # Auto-adjust column widths including Column A to fit all text perfectly
-        for col in ws.columns:
+        # Auto-adjust column widths safely using get_column_letter
+        for col_num in range(1, max_col_idx + 1):
+          col_letter = get_column_letter(col_num)
           max_len = 0
-          col_letter = col[0].column_letter
-          for cell in col:
-            if cell.value is not None:
-              # For column A, account for longer question titles
-              val_str = str(cell.value)
-              if col_letter == "A":
-                max_len = max(max_len, len(val_str))
-              else:
-                max_len = max(max_len, len(val_str))
-          # Set appropriate padding
+          for row_num in range(1, len(table_rows) + 6):
+            cell_val = ws.cell(row=row_num, column=col_num).value
+            if cell_val is not None:
+              max_len = max(max_len, len(str(cell_val)))
+
           if col_letter == "A":
             ws.column_dimensions[col_letter].width = min(max(max_len + 4, 30), 65)
           else:
