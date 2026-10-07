@@ -15,8 +15,8 @@ st.set_page_config(
 st.title("SME-ENT Tables: R10MIL_GROWTH")
 st.write(
     "Upload your SPSS `.sav` data file below. Filters for Type = 1 (Growth)"
-    " & 2 (R10Mil), and formats the Excel output with the exact 4-tier column"
-    " hierarchy."
+    " & 2 (R10Mil), and breaks down metrics by Total, Months (Tmonth), Type, and"
+    " Segment banners."
 )
 
 # File uploader widget
@@ -40,6 +40,7 @@ if uploaded_file is not None:
 
       type_col = col_map.get("type", None)
       seg2_col = col_map.get("seg2", None)
+      tmonth_col = col_map.get("tmonth", None)
 
       # --- FILTER LOGIC FOR R10MIL_GROWTH ---
       if type_col:
@@ -73,6 +74,20 @@ if uploaded_file is not None:
           if plat_code:
             plat_val = plat_code[0]
 
+        # Helper: Determine Tmonth values and labels
+        month_dict = {}  # code -> label
+        if (
+            meta
+            and meta.variable_value_labels
+            and tmonth_col
+            and tmonth_col in meta.variable_value_labels
+        ):
+          month_dict = meta.variable_value_labels[tmonth_col]
+
+        # If no labels found in metadata, find unique numeric values in data
+        if not month_dict and tmonth_col and tmonth_col in df_tab.columns:
+          unique_months = sorted(df_tab[tmonth_col].dropna().unique())
+          month_dict = {m: str(m) for m in unique_months}
 
         # Function to calculate NPS Score and Valid N
         def calculate_nps(data, variable_name):
@@ -87,7 +102,6 @@ if uploaded_file is not None:
           nps_score = ((promoters - detractors) / valid_n) * 100
           return round(nps_score, 2), valid_n
 
-
         # Function to calculate Rating Mean (excluding code 11 for "Don't know")
         def calculate_rating_mean(data, variable_name):
           if variable_name not in data.columns or len(data) == 0:
@@ -99,50 +113,91 @@ if uploaded_file is not None:
             return 0.0
           return round(valid_data[variable_name].mean(), 2)
 
-
-        # Define sub-samples for columns safely using detected column names
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
-        subsets = {
-            ("Total", "Total", "Mean"): df_tab,
-            ("Total", "Total", "Valid N"): df_tab,
-            ("Type", "Total", "Mean"): df_tab,
-            ("Type", "Total", "Valid N"): df_tab,
-            ("Type", "Growth", "Mean"): (
-                df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
-            ),
-            ("Type", "Growth", "Valid N"): (
-                df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
-            ),
-            ("Type", "R10Mil", "Mean"): (
-                df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
-            ),
-            ("Type", "R10Mil", "Valid N"): (
-                df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
-            ),
-            ("Segment", "ENTERPRISE", "Mean"): (
-                df_tab[df_tab[seg2_filter_col] == ent_val]
-                if seg2_filter_col in df_tab.columns
-                else pd.DataFrame()
-            ),
-            ("Segment", "ENTERPRISE", "Valid N"): (
-                df_tab[df_tab[seg2_filter_col] == ent_val]
-                if seg2_filter_col in df_tab.columns
-                else pd.DataFrame()
-            ),
-            ("Segment", "PLATINUM", "Mean"): (
-                df_tab[df_tab[seg2_filter_col] == plat_val]
-                if seg2_filter_col in df_tab.columns
-                else pd.DataFrame()
-            ),
-            ("Segment", "PLATINUM", "Valid N"): (
-                df_tab[df_tab[seg2_filter_col] == plat_val]
-                if seg2_filter_col in df_tab.columns
-                else pd.DataFrame()
-            ),
-        }
+        # Build columns dynamically: First block is "Total", followed by each month block from Tmonth[cite: 14]
+        subsets = {}
 
-        # Define metrics to extract (NPS, Q10, Q11, Q12)
+        # 1. Total (Overall) Block[cite: 14]
+        subsets[("Total", "Total", "Total", "Mean")] = df_tab
+        subsets[("Total", "Total", "Total", "Valid N")] = df_tab
+        subsets[("Total", "Type", "Total", "Mean")] = df_tab
+        subsets[("Total", "Type", "Total", "Valid N")] = df_tab
+        subsets[("Total", "Type", "Growth", "Mean")] = (
+            df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
+        )
+        subsets[("Total", "Type", "Growth", "Valid N")] = (
+            df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
+        )
+        subsets[("Total", "Type", "R10Mil", "Mean")] = (
+            df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
+        )
+        subsets[("Total", "Type", "R10Mil", "Valid N")] = (
+            df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
+        )
+        subsets[("Total", "Segment", "ENTERPRISE", "Mean")] = (
+            df_tab[df_tab[seg2_filter_col] == ent_val]
+            if seg2_filter_col in df_tab.columns
+            else pd.DataFrame()
+        )
+        subsets[("Total", "Segment", "ENTERPRISE", "Valid N")] = (
+            df_tab[df_tab[seg2_filter_col] == ent_val]
+            if seg2_filter_col in df_tab.columns
+            else pd.DataFrame()
+        )
+        subsets[("Total", "Segment", "PLATINUM", "Mean")] = (
+            df_tab[df_tab[seg2_filter_col] == plat_val]
+            if seg2_filter_col in df_tab.columns
+            else pd.DataFrame()
+        )
+        subsets[("Total", "Segment", "PLATINUM", "Valid N")] = (
+            df_tab[df_tab[seg2_filter_col] == plat_val]
+            if seg2_filter_col in df_tab.columns
+            else pd.DataFrame()
+        )
+
+        # 2. Monthly Blocks (iterating through each month code in Tmonth)[cite: 14]
+        if tmonth_col and month_dict:
+          for m_code, m_label in month_dict.items():
+            m_df = df_tab[df_tab[tmonth_col] == m_code]
+            subsets[(m_label, "Total", "Total", "Mean")] = m_df
+            subsets[(m_label, "Total", "Total", "Valid N")] = m_df
+            subsets[(m_label, "Type", "Total", "Mean")] = m_df
+            subsets[(m_label, "Type", "Total", "Valid N")] = m_df
+            subsets[(m_label, "Type", "Growth", "Mean")] = (
+                m_df[m_df[type_col] == 1] if type_col else pd.DataFrame()
+            )
+            subsets[(m_label, "Type", "Growth", "Valid N")] = (
+                m_df[m_df[type_col] == 1] if type_col else pd.DataFrame()
+            )
+            subsets[(m_label, "Type", "R10Mil", "Mean")] = (
+                m_df[m_df[type_col] == 2] if type_col else pd.DataFrame()
+            )
+            subsets[(m_label, "Type", "R10Mil", "Valid N")] = (
+                m_df[m_df[type_col] == 2] if type_col else pd.DataFrame()
+            )
+            subsets[(m_label, "Segment", "ENTERPRISE", "Mean")] = (
+                m_df[m_df[seg2_filter_col] == ent_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            )
+            subsets[(m_label, "Segment", "ENTERPRISE", "Valid N")] = (
+                m_df[m_df[seg2_filter_col] == ent_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            )
+            subsets[(m_label, "Segment", "PLATINUM", "Mean")] = (
+                m_df[m_df[seg2_filter_col] == plat_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            )
+            subsets[(m_label, "Segment", "PLATINUM", "Valid N")] = (
+                m_df[m_df[seg2_filter_col] == plat_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            )
+
+        # Define metrics to extract
         metrics_config = [
             ("FNB_NPS_SCORE", "FNB_NPS1", True),
             ("BM_NPS_SCORE", "BM_NPS1", True),
@@ -190,7 +245,7 @@ if uploaded_file is not None:
         for label, var_name, is_nps in metrics_config:
           row_data = {"Metric": label}
           for col_key, sub_df in subsets.items():
-            banner, sub_col, stat = col_key
+            month_banner, banner, sub_col, stat = col_key
             if is_nps:
               mean_val, n_val = calculate_nps(sub_df, var_name)
               if stat == "Mean":
@@ -206,8 +261,8 @@ if uploaded_file is not None:
 
         # Construct MultiIndex columns dataframe for Streamlit preview
         multi_cols = pd.MultiIndex.from_tuples(
-            [("Metric", "", "")] + list(subsets.keys()),
-            names=["Banner", "Sub-Group", "Stat"],
+            [("Metric", "", "", "")] + list(subsets.keys()),
+            names=["Month", "Banner", "Sub-Group", "Stat"],
         )
 
         formatted_rows = []
@@ -219,53 +274,126 @@ if uploaded_file is not None:
 
         summary_df = pd.DataFrame(formatted_rows, columns=multi_cols)
 
-        st.success(
-            "Extraction and hierarchical layout completed successfully!"
-        )
+        st.success("Extraction and monthly breakdown completed successfully!")
 
-        # Display dataframe in app with multi-index columns nicely formatted
+        # Display dataframe in app
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(summary_df, use_container_width=True)
 
-        # Build custom Excel workbook using openpyxl to match the exact 4-tier structure
+        # Build custom Excel workbook using openpyxl for the hierarchical monthly layout
         wb = Workbook()
         ws = wb.active
         ws.title = "R10MIL_GROWTH"
-
-        # Ensure grid lines are visible
         ws.views.sheetView[0].showGridLines = True
 
-        # Row 1: Top Banner ("Total" spanning from col B to M)
+        # Write Headers (Rows 1 to 4)
         ws.cell(row=1, column=1, value="")
-        ws.cell(row=1, column=2, value="Total")
-        ws.merge_cells("B1:M1")
+        ws.cell(row=2, column=1, value="")
+        ws.cell(row=3, column=1, value="")
+        ws.cell(row=4, column=1, value="")
 
-        # Row 2: Sub-Banners ("Type" for cols B-G, "Seg2" for cols H-M)[cite: 13]
-        ws.cell(row=2, column=2, value="Type")
-        ws.merge_cells("B2:G2")
-        ws.cell(row=2, column=8, value="Seg2")
-        ws.merge_cells("H2:M2")
+        # Determine column spans per month block (each month has 12 columns: Total(2), Type Total(2), Growth(2), R10Mil(2), Ent(2), Plat(2))
+        col_start = 2
+        unique_months = ["Total"] + list(month_dict.values())
 
-        # Row 3: Sub-Groups (Total, Growth, R10Mil, ENTERPRISE, PLATINUM)[cite: 13]
-        sub_group_headers = [
-            ("Total", 2, 3),
-            ("Growth", 4, 5),
-            ("R10Mil", 6, 7),
-            ("ENTERPRISE", 8, 9),
-            ("PLATINUM", 10, 11),
-        ]
-        for name, start_c, end_c in sub_group_headers:
-          ws.cell(row=3, column=start_c, value=name)
-          if start_c != end_c:
+        for m_idx, m_name in enumerate(unique_months):
+          block_start = col_start
+          block_end = col_start + 11
+
+          # Row 1: Month Name ("Total", "July", "August", etc.)[cite: 14]
+          ws.cell(row=1, column=block_start, value=m_name)
+          if block_start != block_end:
             ws.merge_cells(
-                start_row=3, start_column=start_c, end_row=3, end_column=end_c
+                start_row=1,
+                start_column=block_start,
+                end_row=1,
+                end_column=block_end,
             )
 
-        # Row 4: Stats (Mean / Valid N)[cite: 13]
-        ws.cell(row=4, column=1, value="")
-        for c in range(2, 14):
-          stat_label = "Mean" if c % 2 == 0 else "Valid N"
-          ws.cell(row=4, column=c, value=stat_label)
+          # Row 2: Banners ("Total" for first block, or "Type"/"Seg2" sub-divisions)[cite: 14]
+          if m_name == "Total":
+            ws.cell(row=2, column=block_start, value="Total")
+            ws.merge_cells(
+                start_row=2,
+                start_column=block_start,
+                end_row=2,
+                end_column=block_end,
+            )
+          else:
+            ws.cell(row=2, column=block_start, value="Total")
+            ws.merge_cells(
+                start_row=2,
+                start_column=block_start,
+                end_row=2,
+                end_column=block_start + 1,
+            )
+            ws.cell(row=2, column=block_start + 2, value="Type")
+            ws.merge_cells(
+                start_row=2,
+                start_column=block_start + 2,
+                end_row=2,
+                end_column=block_start + 7,
+            )
+            ws.cell(row=2, column=block_start + 8, value="Seg2")
+            ws.merge_cells(
+                start_row=2,
+                start_column=block_start + 8,
+                end_row=2,
+                end_column=block_end,
+            )
+
+          # Row 3: Sub-Groups[cite: 14]
+          ws.cell(row=3, column=block_start, value="Total")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start,
+              end_row=3,
+              end_column=block_start + 1,
+          )
+
+          ws.cell(row=3, column=block_start + 2, value="Total")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start + 2,
+              end_row=3,
+              end_column=block_start + 3,
+          )
+          ws.cell(row=3, column=block_start + 4, value="Growth")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start + 4,
+              end_row=3,
+              end_column=block_start + 5,
+          )
+          ws.cell(row=3, column=block_start + 6, value="R10Mil")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start + 6,
+              end_row=3,
+              end_column=block_start + 7,
+          )
+
+          ws.cell(row=3, column=block_start + 8, value="ENTERPRISE")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start + 8,
+              end_row=3,
+              end_column=block_start + 9,
+          )
+          ws.cell(row=3, column=block_start + 10, value="PLATINUM")
+          ws.merge_cells(
+              start_row=3,
+              start_column=block_start + 10,
+              end_row=3,
+              end_column=block_end,
+          )
+
+          # Row 4: Stats (Mean / Valid N)[cite: 14]
+          for c in range(block_start, block_end + 1):
+            stat_label = "Mean" if c % 2 == 0 else "Valid N"
+            ws.cell(row=4, column=c, value=stat_label)
+
+          col_start += 12
 
         # Insert Data starting at Row 5
         for r_idx, row_dict in enumerate(table_rows, start=5):
@@ -275,19 +403,16 @@ if uploaded_file is not None:
             ws.cell(row=r_idx, column=col_idx, value=row_dict[col_key])
             col_idx += 1
 
-        # Styling headers (center alignment, borders, fonts)
+        # Styling headers
         thin_border = Border(
             left=Side(style="thin", color="000000"),
             right=Side(style="thin", color="000000"),
             top=Side(style="thin", color="000000"),
             bottom=Side(style="thin", color="000000"),
         )
-        header_fill = PatternFill(
-            start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
-        )
 
         for row in range(1, 5):
-          for col in range(1, 14):
+          for col in range(1, col_idx):
             cell = ws.cell(row=row, column=col)
             cell.alignment = Alignment(
                 horizontal="center", vertical="center", wrap_text=True
@@ -304,6 +429,6 @@ if uploaded_file is not None:
         st.download_button(
             label="📥 Download Excel Report",
             data=excel_data,
-            file_name="R10MIL_GROWTH_Report.xlsx",
+            file_name="R10MIL_GROWTH_Monthly_Report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
