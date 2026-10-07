@@ -101,8 +101,6 @@ if uploaded_file is not None:
         # Define sub-samples for the columns safely using detected column names
         seg2_filter_col = seg2_col if seg2_col else "seg2"
 
-        # Column tuple structure: (Top Banner / Total, Sub-banner / Group, Stat)
-        # Matching layout: Total banner covers everything, Type covers Total/Growth/R10Mil, Segment covers ENTERPRISE/PLATINUM[cite: 1, 10]
         subsets = {
             ("Total", "Total", "Mean"): df_tab,
             ("Total", "Total", "Valid N"): df_tab,
@@ -198,14 +196,13 @@ if uploaded_file is not None:
               else:
                 row_data[col_key] = n_val
             else:
-              # For rating scales, mean is calculated; Valid N is left blank ("") like the screenshot layout[cite: 1, 8]
               if stat == "Mean":
                 row_data[col_key] = calculate_rating_mean(sub_df, var_name)
               else:
                 row_data[col_key] = ""
           table_rows.append(row_data)
 
-        # Construct MultiIndex columns dataframe matching the exact hierarchy
+        # Construct MultiIndex columns dataframe for Streamlit
         multi_cols = pd.MultiIndex.from_tuples(
             [("Metric", "", "")] + list(subsets.keys()),
             names=["Banner", "Sub-Group", "Stat"],
@@ -228,10 +225,16 @@ if uploaded_file is not None:
         st.subheader("Results Preview: R10MIL_GROWTH")
         st.dataframe(summary_df, use_container_width=True)
 
-        # Generate Excel file for download
+        # Generate Excel file for download (flattening columns to avoid openpyxl multi-index limitation)
         output = io.BytesIO()
+        excel_export_df = summary_df.copy()
+        excel_export_df.columns = [
+            f"{col[0]} | {col[1]} | {col[2]}" if col[0] != "Metric" else "Metric"
+            for col in excel_export_df.columns
+        ]
+
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-          summary_df.to_excel(
+          excel_export_df.to_excel(
               writer, sheet_name="R10MIL_GROWTH", index=False, header=True
           )
         excel_data = output.getvalue()
