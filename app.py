@@ -33,9 +33,16 @@ if uploaded_file is not None:
       # Read the .sav file and metadata using pyreadstat
       df, meta = pyreadstat.read_sav("temp.sav")
 
+      # Normalize column names for case-insensitive matching if needed
+      # Find exact column names regardless of casing
+      col_map = {c.lower(): c for c in df.columns}
+
+      type_col = col_map.get("type", None)
+      seg2_col = col_map.get("seg2", None)
+
       # --- FILTER LOGIC FOR R10MIL_GROWTH ---
-      if "Type" in df.columns:
-        df_tab = df[df["Type"].isin([1, 2])]
+      if type_col:
+        df_tab = df[df[type_col].isin([1, 2])]
       else:
         st.error(
             "Error: 'Type' column not found in the uploaded SPSS file."
@@ -47,8 +54,13 @@ if uploaded_file is not None:
 
         # Helper: Determine segment codes dynamically from metadata if possible
         ent_val, plat_val = 1, 2  # defaults
-        if meta and meta.variable_value_labels and "seg2" in meta.variable_value_labels:
-          seg2_labels = meta.variable_value_labels["seg2"]
+        if (
+            meta
+            and meta.variable_value_labels
+            and seg2_col
+            and seg2_col in meta.variable_value_labels
+        ):
+          seg2_labels = meta.variable_value_labels[seg2_col]
           ent_code = [
               k for k, v in seg2_labels.items() if "enterprise" in str(v).lower()
           ]
@@ -87,16 +99,30 @@ if uploaded_file is not None:
           return round(valid_data[variable_name].mean(), 2)
 
 
-        # Define sub-samples for the columns
+        # Define sub-samples for the columns safely using detected column names
+        seg2_filter_col = seg2_col if seg2_col else "seg2"
+
         subsets = {
             ("Total", "Total"): df_tab,
-            ("Type", "Growth"): df_tab[df_tab["Type"] == 1],
-            ("Type", "R10Mil"): df_tab[df_tab["Type"] == 2],
-            ("Segment", "ENTERPRISE"): df_tab[df_tab["seg2"] == ent_val],
-            ("Segment", "PLATINUM"): df_tab[df_tab["seg2"] == plat_val],
+            ("Type", "Growth"): (
+                df_tab[df_tab[type_col] == 1] if type_col else pd.DataFrame()
+            ),
+            ("Type", "R10Mil"): (
+                df_tab[df_tab[type_col] == 2] if type_col else pd.DataFrame()
+            ),
+            ("Segment", "ENTERPRISE"): (
+                df_tab[df_tab[seg2_filter_col] == ent_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            ),
+            ("Segment", "PLATINUM"): (
+                df_tab[df_tab[seg2_filter_col] == plat_val]
+                if seg2_filter_col in df_tab.columns
+                else pd.DataFrame()
+            ),
         }
 
-        # Define metrics to extract
+        # Define metrics to extract (NPS, Q10, Q11, Q12)
         metrics_config = [
             ("FNB_NPS_SCORE", "FNB_NPS1", True),
             ("BM_NPS_SCORE", "BM_NPS1", True),
@@ -179,7 +205,9 @@ if uploaded_file is not None:
 
         summary_df = pd.DataFrame(formatted_rows, columns=multi_cols)
 
-        st.success("Extraction and banner cross-tabulation completed!")
+        st.success(
+            "Extraction and banner cross-tabulation completed successfully!"
+        )
 
         # Display dataframe in app
         st.subheader("Results Preview: R10MIL_GROWTH")
@@ -188,7 +216,6 @@ if uploaded_file is not None:
         # Generate Excel file for download
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-          # Write without multiindex header flattening issues for clean export
           summary_df.to_excel(
               writer, sheet_name="R10MIL_GROWTH", index=False, header=True
           )
